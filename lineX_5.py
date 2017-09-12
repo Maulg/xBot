@@ -1,0 +1,197 @@
+#!/usr/bin/python
+
+import os
+import time
+import random
+import atexit
+import RPi.GPIO as GPIO
+from Adafruit_MotorHAT import Adafruit_MotorHAT, Adafruit_DCMotor
+
+# Variables
+speed = 150     #How fast?
+turn = .9       #Inside wheel speed, small correction
+rotate = .3     #Inside wheel speed, large correction,$
+prevLine = 4    #Start going straight
+waitCount = 0	#For obstacle logic
+cookCount = 0	#For temp logic
+
+# Create a default object, no changes to I2C address or frequency
+mh = Adafruit_MotorHAT(addr=0x60)
+
+# Create motor objects
+rightMotor = mh.getMotor(1)
+leftMotor = mh.getMotor(2)
+
+# Recommended for auto-disabling motors on shutdown!
+def turnOffMotors():
+    mh.getMotor(1).run(Adafruit_MotorHAT.RELEASE)
+    mh.getMotor(2).run(Adafruit_MotorHAT.RELEASE)
+    mh.getMotor(3).run(Adafruit_MotorHAT.RELEASE)
+    mh.getMotor(4).run(Adafruit_MotorHAT.RELEASE)
+
+atexit.register(turnOffMotors)
+
+
+# Infrared Sensors
+GPIO.setmode(GPIO.BOARD)
+
+leftPin = 35    # Connected to GPIO 19 pin 35
+centerPin = 38  # Connected to GPIO 20 on pin 38
+rightPin = 40   # Connected to GPIO 21 on pin 40
+
+GPIO.setup(rightPin, GPIO.IN)
+GPIO.setup(centerPin, GPIO.IN)
+GPIO.setup(leftPin, GPIO.IN)
+
+# Set pin mode to output
+GPIO.setup(33, GPIO.OUT)
+GPIO.setup(32, GPIO.OUT)
+GPIO.setup(31, GPIO.OUT)
+# Set pins to high(3.3V) to turn OFF led
+GPIO.output(33, GPIO.HIGH)
+GPIO.output(32, GPIO.HIGH)
+GPIO.output(31, GPIO.HIGH)
+# Set duty cycle
+rPin = GPIO.PWM(33, 2000)
+gPin = GPIO.PWM(32, 5000)
+bPin = GPIO.PWM(31, 2000)
+
+# Initial duty cycle 0 = OFF
+rPin.start(0)
+gPin.start(0)
+bPin.start(0)
+
+def setRGB(red, green, blue): # values may 0-100
+    rPin.start(red)
+    gPin.start(green)
+    bPin.start(blue)
+
+obstaclePin = 29
+GPIO.setup(obstaclePin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+#buzzerPin = 22
+#GPIO.setup(buzzerPin, GPIO.OUT)
+
+def readTemp(id):
+    tfile = open("/sys/bus/w1/devices/"+id+"/w1_slave")
+    text = tfile.read()
+    tfile.close()
+    secondline = text.split("\n")[1]
+    temperaturedata = secondline.split(" ")[9]
+    temperature = float(temperaturedata[2:])
+    temperature = temperature / 1000
+    return temperature
+
+# Here is the main script
+
+def irState():
+    position = (GPIO.input(leftPin) * 1) + (GPIO.input(centerPin) * 2) + (GPIO.input(rightPin) * 4)
+    return position
+    # 0 = all off, 1 = left sensor on, 2 = center sensor on, 3 = left and center sensor  on,
+    # 4 = right sensor on, 5 = right and left sensor on, 6 = right and center sensors on, 7 all on
+
+try:
+    while True:
+        line = irState()
+        temp = readTemp
+
+        if temp > 28 and cookCount == 0:
+            print readTemp
+            leftMotor.run(Adafruit_MotorHAT.RELEASE)
+            rightMotor.run(Adafruit_MotorHAT.RELEASE)
+            setRGB(0,0,100)
+            time.sleep(10)
+            cookCount = 1
+
+        if GPIO.input(obstaclePin) == 1 and waitCount == 1:
+            waitCount = 0
+
+        if GPIO.input(obstaclePin) == 0 and waitCount == 0:
+            leftMotor.run(Adafruit_MotorHAT.RELEASE)
+            rightMotor.run(Adafruit_MotorHAT.RELEASE)
+            setRGB(100,0,0)
+            time.sleep(5)
+            waitCount = 1
+
+        if GPIO.input(obstaclePin) == 0 and waitCount == 1:
+            leftMotor.run(Adafruit_MotorHAT.RELEASE)
+            rightMotor.run(Adafruit_MotorHAT.RELEASE)
+            setRGB(100,0,0)
+            print("Make some noise")
+            GPIO.PWM(buzzerPin, 440)
+            print("Pulse IR 5 times, at 150ms on/off")
+            time.sleep(5)
+            print("Stop making noise")
+            waitCount = 0
+
+        if line == 0:   # No line
+            print("Lost line! Use previous data.")
+            line = prevLine
+            setRGB(0,100,0)
+
+        if line == 5:   # 104 Line is far left and right of center
+            print("Choose left or right")
+            pickLR = [1, 4]
+            line = random.choice(pickLR)
+            setRGB(0,100,0)
+
+        if line == 7:   # 124 Line is every where!
+            print("Line is everywhere!")
+            pickLCR = [3, 6]
+#            pickLCR = [2, 3, 6]
+            line = random.choice(pickLCR)
+            setRGB(0,100,0)
+
+        if line == 1:   # Line is far left
+            print("Rotate left.")
+            leftMotor.run(Adafruit_MotorHAT.FORWARD)
+            rightMotor.run(Adafruit_MotorHAT.FORWARD)
+            leftMotor.setSpeed(int(speed*rotate))
+            rightMotor.setSpeed(int(speed*turn))
+            prevLine = 1
+            setRGB(0,100,0)
+
+        if line == 2:   # Line is center
+            print("Move forward. Accelerate")
+            leftMotor.run(Adafruit_MotorHAT.FORWARD)
+            rightMotor.run(Adafruit_MotorHAT.FORWARD)
+            leftMotor.setSpeed(speed)
+            rightMotor.setSpeed(speed)
+            prevLine = 2
+            setRGB(0,100,0)
+
+        if line == 3:   # Line left, near center
+            print("Turn left.")
+            leftMotor.run(Adafruit_MotorHAT.FORWARD)
+            rightMotor.run(Adafruit_MotorHAT.FORWARD)
+            leftMotor.setSpeed(int(speed*turn))
+            rightMotor.setSpeed(int(speed))
+            prevLine = 3
+            setRGB(0,100,0)
+
+        if line == 4:   # Line is far right
+            print("Rotate right.")
+            leftMotor.run(Adafruit_MotorHAT.FORWARD)
+            rightMotor.run(Adafruit_MotorHAT.FORWARD)
+            leftMotor.setSpeed(int(speed*turn))
+            rightMotor.setSpeed(int(speed*rotate))
+            prevLine = 4
+            setRGB(0,100,0)
+
+        if line == 6:   # 024 Line is right near center
+            print("Turn right.")
+            leftMotor.run(Adafruit_MotorHAT.FORWARD)
+            rightMotor.run(Adafruit_MotorHAT.FORWARD)
+            leftMotor.setSpeed(int(speed))
+            rightMotor.setSpeed(int(speed*turn))
+            prevLine = 6
+            setRGB(0,100,0)
+
+except KeyboardInterrupt:
+    rPin.stop()
+    gPin.stop()
+    bPin.stop()
+    GPIO.output(33, GPIO.HIGH)
+    GPIO.output(32, GPIO.HIGH)
+    GPIO.output(31, GPIO.HIGH)
+    GPIO.cleanup()
