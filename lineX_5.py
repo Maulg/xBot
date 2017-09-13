@@ -13,6 +13,7 @@ turn = .9       #Inside wheel speed, small correction
 rotate = .3     #Inside wheel speed, large correction,$
 prevLine = 4    #Start going straight
 waitCount = 0	#For obstacle logic
+temp = 0
 cookCount = 0	#For temp logic
 
 # Create a default object, no changes to I2C address or frequency
@@ -69,10 +70,7 @@ def setRGB(red, green, blue): # values may 0-100
 obstaclePin = 29
 GPIO.setup(obstaclePin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-#buzzerPin = 22
-#GPIO.setup(buzzerPin, GPIO.OUT)
-
-def readTemp(id):
+def readSensor(id):
     tfile = open("/sys/bus/w1/devices/"+id+"/w1_slave")
     text = tfile.read()
     tfile.close()
@@ -81,6 +79,21 @@ def readTemp(id):
     temperature = float(temperaturedata[2:])
     temperature = temperature / 1000
     return temperature
+
+# IR LED config
+irPin = 36    # pin 36
+
+GPIO.setmode(GPIO.BOARD)      # Numbers GPIOs by physical location
+GPIO.setup(irPin, GPIO.OUT)   # Set irPin's mode is output
+GPIO.output(irPin, GPIO.HIGH) # Set irPin high(+3.3V) to off led
+
+def irPulse():
+    print '...led on'
+    GPIO.output(irPin, GPIO.HIGH)  # led on
+    time.sleep(0.15)
+    print 'led off...'
+    GPIO.output(irPin, GPIO.LOW) # led off
+    time.sleep(0.15)
 
 # Here is the main script
 
@@ -93,18 +106,15 @@ def irState():
 try:
     while True:
         line = irState()
-        temp = readTemp
+        temp = readSensor("28-01162e5364ee")
 
         if temp > 28 and cookCount == 0:
-            print readTemp
+            print temp
             leftMotor.run(Adafruit_MotorHAT.RELEASE)
             rightMotor.run(Adafruit_MotorHAT.RELEASE)
             setRGB(0,0,100)
             time.sleep(10)
             cookCount = 1
-
-        if GPIO.input(obstaclePin) == 1 and waitCount == 1:
-            waitCount = 0
 
         if GPIO.input(obstaclePin) == 0 and waitCount == 0:
             leftMotor.run(Adafruit_MotorHAT.RELEASE)
@@ -118,9 +128,13 @@ try:
             rightMotor.run(Adafruit_MotorHAT.RELEASE)
             setRGB(100,0,0)
             print("Make some noise")
-            GPIO.PWM(buzzerPin, 440)
             print("Pulse IR 5 times, at 150ms on/off")
-            time.sleep(5)
+            irPulse() # 1
+            irPulse() # 2
+            irPulse() # 3
+            irPulse() # 4
+            irPulse() # 5
+            time.sleep(4.25)
             print("Stop making noise")
             waitCount = 0
 
