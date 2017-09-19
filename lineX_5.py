@@ -54,8 +54,8 @@ GPIO.output(32, GPIO.HIGH)
 GPIO.output(31, GPIO.HIGH)
 # Set duty cycle
 rPin = GPIO.PWM(33, 2000)
-gPin = GPIO.PWM(32, 5000)
-bPin = GPIO.PWM(31, 2000)
+gPin = GPIO.PWM(32, 2000)
+bPin = GPIO.PWM(31, 5000)
 
 # Initial duty cycle 0 = OFF
 rPin.start(0)
@@ -95,13 +95,28 @@ def irPulse():
     GPIO.output(irPin, GPIO.LOW) # led off
     time.sleep(0.15)
 
-# Here is the main script
+## Sound active buzzer
 
+buzzerPin = 11 # GPIO 17
+GPIO.setup(buzzerPin, GPIO.OUT)
+GPIO.output(buzzerPin, GPIO.LOW)
+
+def buzzer(switch):
+    switch = switch
+    if switch == 0:
+        GPIO.output(buzzerPin, GPIO.LOW)
+    if switch == 1:
+        GPIO.output(buzzerPin, GPIO.HIGH)
+
+# IR sensor states
 def irState():
     position = (GPIO.input(leftPin) * 1) + (GPIO.input(centerPin) * 2) + (GPIO.input(rightPin) * 4)
     return position
     # 0 = all off, 1 = left sensor on, 2 = center sensor on, 3 = left and center sensor  on,
     # 4 = right sensor on, 5 = right and left sensor on, 6 = right and center sensors on, 7 all on
+
+
+# Here is the script
 
 try:
     while True:
@@ -114,13 +129,20 @@ try:
             rightMotor.run(Adafruit_MotorHAT.RELEASE)
             setRGB(0,0,100)
             time.sleep(10)
-            cookCount = 1
+            cookCount = 1 # never do this again
+
+        if GPIO.input(obstaclePin) == 1 and waitCount==1:
+            print("Stop making noise")
+            buzzer(0)
+            waitCount = 0
 
         if GPIO.input(obstaclePin) == 0 and waitCount == 0:
             leftMotor.run(Adafruit_MotorHAT.RELEASE)
             rightMotor.run(Adafruit_MotorHAT.RELEASE)
             setRGB(100,0,0)
+            print ("Obstacle detected!!!")
             time.sleep(5)
+            print ("Look again")
             waitCount = 1
 
         if GPIO.input(obstaclePin) == 0 and waitCount == 1:
@@ -128,33 +150,31 @@ try:
             rightMotor.run(Adafruit_MotorHAT.RELEASE)
             setRGB(100,0,0)
             print("Make some noise")
+            buzzer(1)
             print("Pulse IR 5 times, at 150ms on/off")
             irPulse() # 1
             irPulse() # 2
             irPulse() # 3
             irPulse() # 4
             irPulse() # 5
-            time.sleep(4.25)
-            print("Stop making noise")
-            waitCount = 0
 
         if line == 0:   # No line
             print("Lost line! Use previous data.")
             line = prevLine
-            setRGB(0,100,0)
+            setRGB(100,100,100)
 
         if line == 5:   # 104 Line is far left and right of center
             print("Choose left or right")
             pickLR = [1, 4]
             line = random.choice(pickLR)
-            setRGB(0,100,0)
+            setRGB(100,100,100)
 
         if line == 7:   # 124 Line is every where!
             print("Line is everywhere!")
             pickLCR = [3, 6]
 #            pickLCR = [2, 3, 6]
             line = random.choice(pickLCR)
-            setRGB(0,100,0)
+            setRGB(100,100,100)
 
         if line == 1:   # Line is far left
             print("Rotate left.")
@@ -163,7 +183,7 @@ try:
             leftMotor.setSpeed(int(speed*rotate))
             rightMotor.setSpeed(int(speed*turn))
             prevLine = 1
-            setRGB(0,100,0)
+            setRGB(100,100,100)
 
         if line == 2:   # Line is center
             print("Move forward. Accelerate")
@@ -172,7 +192,7 @@ try:
             leftMotor.setSpeed(speed)
             rightMotor.setSpeed(speed)
             prevLine = 2
-            setRGB(0,100,0)
+            setRGB(100,100,100)
 
         if line == 3:   # Line left, near center
             print("Turn left.")
@@ -181,7 +201,7 @@ try:
             leftMotor.setSpeed(int(speed*turn))
             rightMotor.setSpeed(int(speed))
             prevLine = 3
-            setRGB(0,100,0)
+            setRGB(100,100,100)
 
         if line == 4:   # Line is far right
             print("Rotate right.")
@@ -190,7 +210,7 @@ try:
             leftMotor.setSpeed(int(speed*turn))
             rightMotor.setSpeed(int(speed*rotate))
             prevLine = 4
-            setRGB(0,100,0)
+            setRGB(100,100,100)
 
         if line == 6:   # 024 Line is right near center
             print("Turn right.")
@@ -199,7 +219,7 @@ try:
             leftMotor.setSpeed(int(speed))
             rightMotor.setSpeed(int(speed*turn))
             prevLine = 6
-            setRGB(0,100,0)
+            setRGB(100,100,100)
 
 except KeyboardInterrupt:
     rPin.stop()
