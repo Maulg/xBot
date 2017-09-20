@@ -5,13 +5,14 @@ import time
 import random
 import atexit
 import threading
+from TempSensorController import TempSensorController
 import RPi.GPIO as GPIO
 from Adafruit_MotorHAT import Adafruit_MotorHAT, Adafruit_DCMotor
 
 # Variables
-speed = 150     #How fast?
-turn = .9       #Inside wheel speed, small correction
-rotate = .3     #Inside wheel speed, large correction,$
+speed = 200     #How fast?
+turn = .6       #Inside wheel speed, small correction
+rotate = .1     #Inside wheel speed, large correction,$
 prevLine = 4    #Start going straight
 waitCount = 0	#For obstacle logic
 temp = 0
@@ -54,9 +55,9 @@ GPIO.output(33, GPIO.HIGH)
 GPIO.output(32, GPIO.HIGH)
 GPIO.output(31, GPIO.HIGH)
 # Set duty cycle
-rPin = GPIO.PWM(33, 2000)
-gPin = GPIO.PWM(32, 2000)
-bPin = GPIO.PWM(31, 5000)
+rPin = GPIO.PWM(32, 2000)
+gPin = GPIO.PWM(31, 2000)
+bPin = GPIO.PWM(33, 5000)
 
 # Initial duty cycle 0 = OFF
 rPin.start(0)
@@ -70,17 +71,6 @@ def setRGB(red, green, blue): # values may 0-100
 
 obstaclePin = 29
 GPIO.setup(obstaclePin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
-# Temp 
-def readSensor(id):
-    tfile = open("/sys/bus/w1/devices/"+id+"/w1_slave")
-    text = tfile.read()
-    tfile.close()
-    secondline = text.split("\n")[1]
-    temperaturedata = secondline.split(" ")[9]
-    temperature = float(temperaturedata[2:])
-    temperature = temperature / 1000
-    return temperature
 
 # IR LED config
 irPin = 36    # pin 36
@@ -117,26 +107,34 @@ def irState():
     # 0 = all off, 1 = left sensor on, 2 = center sensor on, 3 = left and center sensor  on,
     # 4 = right sensor on, 5 = right and left sensor on, 6 = right and center sensors on, 7 all on
 
+# Temp
+tempcontrol = TempSensorController("28-01162e5364ee",1)
+tempcontrol.start()
 
 # Here is the script
 
 try:
     while True:
         line = irState()
-        temp = readSensor("28-01162e5364ee")
-#        temp = threading.thread(target=readSensor, args=("28-01162e5364ee",))
-#        threads.append(temp)
-#        temp.start()
+        temp = tempcontrol.temperature.C
 
-        print temp
+        if temp > 28 and cookCount == 1:
+            print ("I am melting!")
+            print temp
+
+        if temp < 28 and cookCount == 1:
+            print ("Ready for the Oven")
+            print temp
+            cookCount = 0
 
         if temp > 28 and cookCount == 0:
+            print ("Simmering at")
             print temp
             leftMotor.run(Adafruit_MotorHAT.RELEASE)
             rightMotor.run(Adafruit_MotorHAT.RELEASE)
             setRGB(0,0,100)
             time.sleep(10)
-            cookCount = 1 # never do this again
+            cookCount = 1
 
         if GPIO.input(obstaclePin) == 1 and waitCount==1:
             print("Stop making noise")
@@ -168,20 +166,20 @@ try:
         if line == 0:   # No line
             print("Lost line! Use previous data.")
             line = prevLine
-            setRGB(100,100,100)
+            setRGB(0,100,0)
 
         if line == 5:   # 104 Line is far left and right of center
             print("Choose left or right")
             pickLR = [1, 4]
             line = random.choice(pickLR)
-            setRGB(100,100,100)
+            setRGB(0,100,0)
 
         if line == 7:   # 124 Line is every where!
             print("Line is everywhere!")
             pickLCR = [3, 6]
 #            pickLCR = [2, 3, 6]
             line = random.choice(pickLCR)
-            setRGB(100,100,100)
+            setRGB(0,100,0)
 
         if line == 1:   # Line is far left
             print("Rotate left.")
@@ -190,7 +188,7 @@ try:
             leftMotor.setSpeed(int(speed*rotate))
             rightMotor.setSpeed(int(speed*turn))
             prevLine = 1
-            setRGB(100,100,100)
+            setRGB(0,100,0)
 
         if line == 2:   # Line is center
             print("Move forward. Accelerate")
@@ -199,7 +197,7 @@ try:
             leftMotor.setSpeed(speed)
             rightMotor.setSpeed(speed)
             prevLine = 2
-            setRGB(100,100,100)
+            setRGB(0,100,0)
 
         if line == 3:   # Line left, near center
             print("Turn left.")
@@ -208,7 +206,7 @@ try:
             leftMotor.setSpeed(int(speed*turn))
             rightMotor.setSpeed(int(speed))
             prevLine = 3
-            setRGB(100,100,100)
+            setRGB(0,100,0)
 
         if line == 4:   # Line is far right
             print("Rotate right.")
@@ -217,7 +215,7 @@ try:
             leftMotor.setSpeed(int(speed*turn))
             rightMotor.setSpeed(int(speed*rotate))
             prevLine = 4
-            setRGB(100,100,100)
+            setRGB(0,100,0)
 
         if line == 6:   # 024 Line is right near center
             print("Turn right.")
@@ -226,9 +224,10 @@ try:
             leftMotor.setSpeed(int(speed))
             rightMotor.setSpeed(int(speed*turn))
             prevLine = 6
-            setRGB(100,100,100)
+            setRGB(0,100,0)
 
 except KeyboardInterrupt:
+    tempcontrol.stopController()
     rPin.stop()
     gPin.stop()
     bPin.stop()
